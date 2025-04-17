@@ -1,0 +1,11 @@
+cd "LOCAL DO PROJETO"
+
+docker build -t sensor-client-app . -> construir imagem docker
+
+python grpc_sensor_server.py --id sensor_cl_01 --port 65400
+
+python grpc_sensor_server.py --id sensor_cl_02 --port 65401
+
+python grpc_sensor_server.py --id sensor_cl_03 --port 65402
+
+docker run --rm -it sensor-client-app

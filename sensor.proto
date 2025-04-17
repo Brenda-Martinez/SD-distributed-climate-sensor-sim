@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+message SensorRequest {
+  string sensor_id_requested = 1; // ID do sensor requisitado
+  string session_token = 2;       // token obtido na autenticacao
+}
+
+message SensorData {
+  string sensor_id = 1;           // id do sensor
+  uint64 lamport_timestamp = 6;   // clock logico
+  // campos de dados climaticos substituidos por payload criptografado
+  bytes encrypted_payload = 7;    // dados (ex: JSON{temp,umid,press,ts_fisico}) criptografados com AES-GCM
+  bytes iv = 8;                   // IV/Nonce usado na criptografia AES-GCM
+  bytes auth_tag = 9;             // tag de autenticacao do AES-GCM
+}
+
+message SensorState {
+    string sensor_id = 1;  // id do sensor
+    double last_timestamp_physical = 2;  // ultimo timestamp
+    float last_temperatura = 3;  // ultimos dados
+    float last_umidade = 4;
+    float last_pressao = 5;
+    uint64 state_lamport_clock = 6; // estado do lamport clock
+}
+
+message SnapshotMarker {
+    uint64 snapshot_id = 1;
+    string initiator_id = 2;
+    string source_id = 3;
+    uint64 sender_lamport_clock = 4;
+    bool is_ack = 5;
+    SensorState recorded_state = 6;
+}
+
+message BullyMessage {
+  enum MessageType {
+    ELECTION = 0;     // inicia eleicao
+    OK = 1;           // resposta a ELECTION
+    COORDINATOR = 2;  // anuncia novo coordenador
+  }
+  MessageType type = 1;
+  string sender_id = 2;
+}
+
+// mensagens heartbeat
+message PingRequest {
+    string sender_id = 1;
+}
+message PingResponse {
+   string responder_id = 1;
+}
+
+// mensagens de replicacao
+message ReplicationAck {
+    bool success = 1;
+    string message = 2;
+}
+
+// mensagens de exclusao Mutua
+message LockRequest {
+    string resource_id = 1;
+    string requester_id = 2;
+}
+message LockResponse {
+    bool granted = 1;
+    string message = 2;
+    string current_holder = 3;
+}
+
+// mensagens de autenticacao/sessao
+message Empty {} // mensagem vazia para requests simples
+
+message PublicKeyResponse {
+    bytes public_key_pem = 1; // chave publica RSA do servidor em formato PEM
+}
+
+message EncryptedSessionKeyRequest {
+    string client_id = 1;           // identifica o cliente que pede a sessao
+    bytes encrypted_key_bundle = 2; // chave AES + IV criptografados com RSA publica do servidor
+}
+
+message SessionResponse {
+    string session_token = 1;       // token unico para esta sessao segura
+    bool success = 2;               // indica se a sessao foi estabelecida
+    string message = 3;             // mensagem de status/erro
+}
+
+
+// definicao do servico SensorService
+service SensorService {
+  // autenticacao / sessao
+  rpc GetServerPublicKey (Empty) returns (PublicKeyResponse) {}
+  rpc EstablishSession (EncryptedSessionKeyRequest) returns (SessionResponse) {}
+
+  // leitura de dados requer token e retorna dados criptografados
+  rpc GetData (SensorRequest) returns (SensorData) {}
+
+  rpc ProcessMarker (SnapshotMarker) returns (SnapshotMarker) {}
+  rpc ProcessBullyMessage (BullyMessage) returns (BullyMessage) {}
+  rpc Ping (PingRequest) returns (PingResponse) {}
+  rpc ReplicateData (SensorData) returns (ReplicationAck) {} // recebe SensorData criptografado
+  rpc RequestLock (LockRequest) returns (LockResponse) {}
+  rpc ReleaseLock (LockRequest) returns (LockResponse) {}
+}
